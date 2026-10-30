@@ -5,6 +5,7 @@ import {
   BASE_TEMPERATURE_C,
   DEFAULT_AMPLITUDE,
   DEFAULT_RATE_MS,
+  MAX_AMPLITUDE,
   MAX_RATE_MS,
   MIN_RATE_MS,
   ownVariables,
@@ -42,7 +43,11 @@ describe('readSettings', () => {
         String(rateMs),
       );
     }
-    for (const amplitude of ['5', null, Number.POSITIVE_INFINITY, Number.NaN, [5]]) {
+    for (const amplitude of [MAX_AMPLITUDE, -MAX_AMPLITUDE]) {
+      assert.deepEqual(readSettings({ amplitude, rateMs: 1000 }).fallbacks, [], String(amplitude));
+    }
+    const tooLarge = [MAX_AMPLITUDE * 2, -MAX_AMPLITUDE - 1, 1e300];
+    for (const amplitude of ['5', null, Number.POSITIVE_INFINITY, Number.NaN, [5], ...tooLarge]) {
       const read = readSettings({ amplitude, rateMs: 1000 });
       assert.deepEqual(read.fallbacks, ['amplitude'], String(amplitude));
       assert.equal(read.settings.amplitude, DEFAULT_AMPLITUDE);

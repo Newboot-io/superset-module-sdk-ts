@@ -100,13 +100,13 @@ Reads the file named by `MODULE_CONFIG` (default `/etc/newboot/module.json`) and
 - `options.log(line)`: where log lines go; default standard error. Connection problems are logged
   as `mqtt: …`, failed reloads as `reload: …`, failing handlers as `handler: …`.
 - `options.reconnectAfterMs`: delay before reconnecting; default 5000.
-- `client.config.configuration` is the module's own `configuration` object as given in
-  `module.json` (`inputs`, `secretFiles` and any other field its description adds; `{}` when
-  absent), for settings the SDK does not interpret.
 - `options.connectMqtt`: replaces the `mqtt` package's `connect` (for tests).
 - Returns a `ModuleClient`; `client.config` is the validated configuration, `client.topics` the
-  module's topics.
-- Throws `ConfigError` when the file cannot be read, is not JSON, or misses or breaks a field;
+  module's topics. `client.config.configuration` is the module's own `configuration` object as
+  given in `module.json` (`inputs`, `secretFiles` and any other field its description adds; `{}`
+  when absent), for settings the SDK does not interpret.
+- Throws `ConfigError` when the file cannot be read, is not UTF-8, is not JSON, or misses or breaks
+  a field;
   `UnsupportedModeError` (a `ConfigError`) for a broker mode other than `mutual-tls`.
   `parseConfig(text)` and `loadConfig(path?)` do the same without a client.
 
@@ -115,8 +115,8 @@ Validation: `mqtt.mode` is checked first, so a module set up for another mode al
 `mqtts://host[:port]`: the host made of letters, digits, dots and dashes, or a bracketed IPv6
 literal (`[::1]`); the port 1 to 5 digits, 1-65535, default 8883 when absent (`host:` with an empty
 port is refused); no user, path, query or fragment. Every path (`mqtt.ca`, `mqtt.identity`,
-`twin.ca`, `twin.identity`, each `secretFiles` entry) is a non-empty string. The `target` ids are topic levels (non-empty, at
-most 200 bytes, no `/`, `+`, `#` or control character); `configuration.inputs` are topics without
+`twin.ca`, `twin.identity`, each `secretFiles` entry) is a non-empty string. The `target` ids are
+topic levels (non-empty, at most 200 bytes, no `/`, `+`, `#` or control character); `configuration.inputs` are topics without
 `+`, `#` or control characters; every `configuration.secretFiles` entry ends in `.json`.
 `"twin": null` means no twin, as when `twin` is absent.
 

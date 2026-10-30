@@ -6,6 +6,8 @@ export const MIN_RATE_MS = 200;
 /** One hour: timers clamp longer delays (above 2^31-1 ms) to 1 ms, a flood of messages. */
 export const MAX_RATE_MS = 3_600_000;
 export const DEFAULT_AMPLITUDE = 5;
+/** The largest |amplitude| accepted: beyond it the readings are meaningless. */
+export const MAX_AMPLITUDE = 1e6;
 /** One full temperature cycle. */
 export const PERIOD_MS = 60_000;
 export const BASE_TEMPERATURE_C = 20;
@@ -34,7 +36,10 @@ export function readSettings(twin: ModuleTwin): { fallbacks: string[]; settings:
     Number.isSafeInteger(rateMs) &&
     (rateMs as number) >= MIN_RATE_MS &&
     (rateMs as number) <= MAX_RATE_MS;
-  const validAmplitude = typeof amplitude === 'number' && Number.isFinite(amplitude);
+  const validAmplitude =
+    typeof amplitude === 'number' &&
+    Number.isFinite(amplitude) &&
+    Math.abs(amplitude) <= MAX_AMPLITUDE;
   if (!validRate) fallbacks.push('rateMs');
   if (!validAmplitude) fallbacks.push('amplitude');
   return {

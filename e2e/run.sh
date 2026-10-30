@@ -188,8 +188,11 @@ refuses_unreadable_secret() {
 
 # The module log holds this line (or, with "!", does not).
 logged() {
-  local negate=$1 line=$2 what=$3
-  if docker logs "$PREFIX-module" 2>&1 | grep -qxF -- "$line"; then found=1; else found=0; fi
+  local negate=$1 line=$2 what=$3 log found
+  # Read the whole log first: `docker logs | grep -q` under pipefail fails when grep exits early
+  # on a match and docker logs then dies of SIGPIPE.
+  log=$(docker logs "$PREFIX-module" 2>&1)
+  if grep -qxF -- "$line" <<<"$log"; then found=1; else found=0; fi
   if { [ "$negate" = "!" ] && [ "$found" = 0 ]; } || { [ "$negate" != "!" ] && [ "$found" = 1 ]; }; then
     echo "PASS $what"
   else

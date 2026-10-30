@@ -59,8 +59,14 @@ function tick(): void {
     [ids.pressure, pressureAt(Math.random)],
   ];
   for (const [variableId, value] of values) {
-    // The SDK names each message after the twin's variable: `temperature`, `pressure`.
-    if (variableId && client.sendTelemetry({ timestamp: nowMs, value, variableId })) sent++;
+    if (!variableId) continue;
+    // The SDK names each message after the twin's variable: `temperature`, `pressure`. A
+    // TelemetryError (a variable id it refuses) names the field only and must not stop the timer.
+    try {
+      if (client.sendTelemetry({ timestamp: nowMs, value, variableId })) sent++;
+    } catch (error) {
+      console.error((error as Error).message);
+    }
   }
   if (++ticks % LOG_EVERY_TICKS === 0) console.log(`sent ${sent} messages`);
 }
