@@ -3,6 +3,8 @@ import type { ModuleTwin } from '@newboot-io/superset-module-sdk';
 
 export const DEFAULT_RATE_MS = 2000;
 export const MIN_RATE_MS = 200;
+/** One hour: timers clamp longer delays (above 2^31-1 ms) to 1 ms, a flood of messages. */
+export const MAX_RATE_MS = 3_600_000;
 export const DEFAULT_AMPLITUDE = 5;
 /** One full temperature cycle. */
 export const PERIOD_MS = 60_000;
@@ -28,7 +30,10 @@ export interface Settings {
 export function readSettings(twin: ModuleTwin): { fallbacks: string[]; settings: Settings } {
   const fallbacks: string[] = [];
   const { amplitude, rateMs } = twin;
-  const validRate = Number.isSafeInteger(rateMs) && (rateMs as number) >= MIN_RATE_MS;
+  const validRate =
+    Number.isSafeInteger(rateMs) &&
+    (rateMs as number) >= MIN_RATE_MS &&
+    (rateMs as number) <= MAX_RATE_MS;
   const validAmplitude = typeof amplitude === 'number' && Number.isFinite(amplitude);
   if (!validRate) fallbacks.push('rateMs');
   if (!validAmplitude) fallbacks.push('amplitude');

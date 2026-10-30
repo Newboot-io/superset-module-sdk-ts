@@ -1,6 +1,7 @@
 import type { Target } from './config.js';
 import type { Topics } from './topics.js';
 import {
+  decodeUtf8,
   hasNonFinite,
   invalidTelemetryField,
   isObject,
@@ -32,7 +33,8 @@ export function decodeMessage({
 }): Record<string, unknown> | undefined {
   if (retain || payload.length > MAX_MESSAGE_BYTES) return undefined;
   try {
-    const message: unknown = JSON.parse(payload.toString());
+    // Invalid UTF-8 throws here, and the message is dropped.
+    const message: unknown = JSON.parse(decodeUtf8(payload));
     return isObject(message) ? message : undefined;
   } catch {
     return undefined;

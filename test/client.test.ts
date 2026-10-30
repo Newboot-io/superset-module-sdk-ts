@@ -7,6 +7,7 @@ import { MAX_PACKET_BYTES, ModuleClient } from '../src/client.js';
 import { parseConfig } from '../src/config.js';
 import { SecretError, TelemetryError, TwinError } from '../src/errors.js';
 import type { TelemetryMessage } from '../src/messages.js';
+import type { Telemetry } from '../src/telemetry.js';
 import { topicsFor } from '../src/topics.js';
 import type { ModuleTwin } from '../src/twin.js';
 import { INPUT, rendered, TARGET } from './fixtures.js';
@@ -145,6 +146,30 @@ describe('ModuleClient', () => {
     assert.equal(client.sendTelemetry({ value: 1, variableId: 'v' }), false);
     assert.deepEqual(broker.published, []);
     assert.deepEqual(lines, ['mqtt: subscription refused']);
+    await client.close();
+  });
+
+  it('treats an end the library decides on as a drop, and reconnects', async () => {
+    const { broker, client, clients, lines } = await connected();
+    broker.endByLibrary();
+    assert.equal(client.isConnected(), false);
+    await until(() => clients.length === 2, 'a second connection');
+    (clients[1] as FakeMqtt).accept();
+    assert.ok(client.isConnected());
+    assert.deepEqual(lines, ['mqtt: disconnected, reconnecting'], 'one drop, logged once');
+    broker.drop(); // a late close of the old connection changes nothing
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(clients.length, 2);
+    await client.close();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(clients.length, 2, 'only close() ends the loop');
+  });
+
+  it('refuses sendTelemetry without a message, with a TelemetryError', async () => {
+    const { client } = await connected();
+    for (const telemetry of [undefined, null]) {
+      assert.throws(() => client.sendTelemetry(telemetry as unknown as Telemetry), TelemetryError);
+    }
     await client.close();
   });
 

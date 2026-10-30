@@ -10,6 +10,17 @@ import { INPUT, rendered, TARGET } from './fixtures.js';
 const parse = (value: unknown) => parseConfig(JSON.stringify(value));
 
 describe('parseConfig', () => {
+  it('exposes the module’s own configuration object as given', () => {
+    const configuration = {
+      inputs: [INPUT],
+      secretFiles: ['/vault/material/device-password.json'],
+      serverport: 4840,
+      settings: { mode: 'fast' },
+    };
+    assert.deepEqual(parse(rendered({ configuration })).configuration, configuration);
+    assert.deepEqual(parse(rendered({ configuration: undefined })).configuration, {});
+  });
+
   it('reads what Newboot renders, with the broker URL as mqtts://', () => {
     const config = parse(rendered());
     assert.equal(config.brokerUrl, 'mqtts://broker:8883');
@@ -208,6 +219,19 @@ describe('parseConfig', () => {
 });
 
 describe('loadConfig', () => {
+  it('refuses a file that is not valid UTF-8', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sdk-config-'));
+    const path = join(dir, 'module.json');
+    const text = JSON.stringify(rendered({ configuration: { note: 'XX' } }));
+    const bytes = Buffer.from(text);
+    bytes.set([0xc3, 0x28], bytes.indexOf('XX'));
+    writeFileSync(path, bytes);
+    assert.throws(() => loadConfig(path), {
+      message: `module configuration ${path} is not UTF-8`,
+      name: 'ConfigError',
+    });
+  });
+
   it('reads the file it is given, and names a missing one', () => {
     const dir = mkdtempSync(join(tmpdir(), 'sdk-config-'));
     const path = join(dir, 'module.json');

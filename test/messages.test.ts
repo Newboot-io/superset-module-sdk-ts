@@ -42,6 +42,17 @@ describe('decodeMessage', () => {
     assert.ok(decode(padded));
   });
 
+  it('drops a message that is not valid UTF-8, instead of reading U+FFFD', () => {
+    const bytes = Buffer.concat([
+      Buffer.from('{"value": "a'),
+      Buffer.from([0xe2, 0x82]),
+      Buffer.from('", "variableId": "v"}'),
+    ]);
+    assert.equal(decodeMessage({ payload: bytes, retain: false }), undefined);
+    const bom = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('{"a": 1}')]);
+    assert.equal(decodeMessage({ payload: bom, retain: false }), undefined, 'a BOM is not JSON');
+  });
+
   it('drops retained, oversized, non-JSON and non-object messages', () => {
     assert.equal(decode('{"a":1}', true), undefined);
     assert.equal(decode(JSON.stringify({ pad: 'x'.repeat(MAX_MESSAGE_BYTES) })), undefined);

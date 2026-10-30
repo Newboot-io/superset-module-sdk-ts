@@ -44,6 +44,21 @@ describe('secrets', () => {
     assert.equal(readSecret({ name: 'device-password', secretFiles }), 'rotated');
   });
 
+  it('refuses a file that is not valid UTF-8, without quoting it', () => {
+    const { file, secretFiles } = secretDir('');
+    writeFileSync(
+      file,
+      Buffer.concat([Buffer.from(`"${VALUE}`), Buffer.from([0xff, 0xfe]), Buffer.from('"')]),
+    );
+    assert.throws(
+      () => readSecret({ name: 'device-password', secretFiles }),
+      (error: Error) =>
+        error.name === 'SecretError' &&
+        error.message === 'secret device-password cannot be read' &&
+        !error.message.includes(VALUE),
+    );
+  });
+
   it('refuses a raw value without quoting it (a parse error would)', () => {
     assert.equal(refusal(VALUE), 'secret device-password cannot be read');
   });

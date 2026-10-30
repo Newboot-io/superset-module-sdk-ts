@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { ConfigError, UnsupportedModeError } from './errors.js';
-import { isObject, validSegment } from './validation.js';
+import { decodeUtf8, isObject, validSegment } from './validation.js';
 
 /** Where Newboot mounts the module configuration, unless `MODULE_CONFIG` names another file. */
 export const DEFAULT_CONFIG_PATH = '/etc/newboot/module.json';
@@ -31,6 +31,11 @@ export interface Target {
 export interface ModuleConfig {
   /** The broker, as `mqtts://host:port` (Newboot writes `tcps://`). */
   brokerUrl: string;
+  /**
+   * The module's own `configuration` object as given in `module.json`: `inputs`, `secretFiles`
+   * and any other field the module's description adds. `{}` when absent.
+   */
+  configuration: Record<string, unknown>;
   /** Telemetry topics of the modules the superset links to this one. */
   inputs: string[];
   mqtt: { ca: string; identity: string; mode: typeof MUTUAL_TLS };
@@ -138,6 +143,7 @@ export function parseConfig(text: string): ModuleConfig {
 
   return {
     brokerUrl: broker,
+    configuration,
     inputs,
     mqtt: {
       ca: filePath(mqtt.ca, 'mqtt.ca'),
@@ -159,11 +165,17 @@ export function parseConfig(text: string): ModuleConfig {
 export function loadConfig(
   path = process.env[CONFIG_PATH_ENV] ?? DEFAULT_CONFIG_PATH,
 ): ModuleConfig {
-  let text: string;
+  let bytes: Buffer;
   try {
-    text = readFileSync(path, 'utf8');
+    bytes = readFileSync(path);
   } catch {
     throw new ConfigError(`module configuration ${path} cannot be read`);
+  }
+  let text: string;
+  try {
+    text = decodeUtf8(bytes);
+  } catch {
+    throw new ConfigError(`module configuration ${path} is not UTF-8`);
   }
   return parseConfig(text);
 }

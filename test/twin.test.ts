@@ -201,6 +201,17 @@ describe('fetchTwin over HTTPS', () => {
     });
   });
 
+  it('rejects an answer that is not valid UTF-8', async (t) => {
+    const body = Buffer.from(JSON.stringify({ modules: { 'my-module': { note: 'XX' } } }));
+    body.set([0x80, 0x80], body.indexOf('XX'));
+    const twin = await twinServer((_request, response) => response.end(body));
+    t.after(twin.close);
+    await assert.rejects(fetchTwin({ config: configFor(twin.endpoint) }), {
+      message: 'the twin answer is not UTF-8',
+      name: 'TwinError',
+    });
+  });
+
   it('rejects an answer over the size bound', async (t) => {
     const twin = await twinServer((_request, response) => response.end('x'.repeat(4096)));
     t.after(twin.close);

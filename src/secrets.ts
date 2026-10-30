@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { SecretError } from './errors.js';
+import { decodeUtf8 } from './validation.js';
 
 const SUFFIX = '.json';
 
@@ -14,7 +15,8 @@ export const secretNames = (secretFiles: readonly string[]): string[] =>
  */
 export function readSecret({
   name,
-  read = (path) => readFileSync(path, 'utf8'),
+  // Strict UTF-8: invalid bytes fail the read instead of becoming U+FFFD.
+  read = (path) => decodeUtf8(readFileSync(path)),
   secretFiles,
 }: {
   name: string;

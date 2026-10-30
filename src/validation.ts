@@ -1,3 +1,10 @@
+/**
+ * Decodes UTF-8 strictly: invalid bytes throw (a `TypeError`) instead of turning into U+FFFD, and
+ * a byte order mark is kept, so JSON.parse refuses it as the other SDKs do.
+ */
+const UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+export const decodeUtf8 = (bytes: Uint8Array): string => UTF8.decode(bytes);
+
 /** Topic levels and ids are at most this many bytes. */
 export const MAX_SEGMENT_BYTES = 200;
 
@@ -66,7 +73,7 @@ export function invalidTelemetryField({
   timestamp?: unknown;
   value?: unknown;
   variableId?: unknown;
-}): keyof typeof TELEMETRY_RULES | undefined {
+} = {}): keyof typeof TELEMETRY_RULES | undefined {
   if (!validSegment(variableId)) return 'variableId';
   if (!isTelemetryValue(value)) return 'value';
   // Number.isSafeInteger: an integral JSON number (1.7e12 too) from -(2^53-1) to 2^53-1.

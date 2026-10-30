@@ -5,6 +5,7 @@ import {
   BASE_TEMPERATURE_C,
   DEFAULT_AMPLITUDE,
   DEFAULT_RATE_MS,
+  MAX_RATE_MS,
   MIN_RATE_MS,
   ownVariables,
   PERIOD_MS,
@@ -32,7 +33,9 @@ describe('readSettings', () => {
       fallbacks: ['rateMs', 'amplitude'],
       settings: { amplitude: DEFAULT_AMPLITUDE, rateMs: DEFAULT_RATE_MS },
     });
-    for (const rateMs of [MIN_RATE_MS - 1, 2000.5, '2000', null, -1, Number.NaN]) {
+    assert.equal(readSettings({ amplitude: 1, rateMs: MAX_RATE_MS }).settings.rateMs, MAX_RATE_MS);
+    const tooSlow = [MAX_RATE_MS + 1, 2 ** 31, 2 ** 31 - 1];
+    for (const rateMs of [MIN_RATE_MS - 1, 2000.5, '2000', null, -1, Number.NaN, ...tooSlow]) {
       assert.deepEqual(
         readSettings({ amplitude: 1, rateMs }).fallbacks,
         ['rateMs'],

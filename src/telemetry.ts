@@ -31,6 +31,7 @@ export function telemetryPayload({
   telemetry: Telemetry;
   twin?: ModuleTwin;
 }): string {
+  if (!isObject(telemetry)) throw new TelemetryError('invalid telemetry: must be an object');
   const field = invalidTelemetryField(telemetry);
   if (field) throw new TelemetryError(`invalid telemetry: ${TELEMETRY_RULES[field]}`);
   const { timestamp = now, value, variableId } = telemetry;

@@ -202,13 +202,20 @@ export class ModuleClient {
     });
     current.on('message', (topic, _payload, packet) => this.receive(topic, packet));
     current.on('error', (error) => this.log(`mqtt: ${error.message}`));
-    current.once('close', () => {
+    // A close, or an end the library decides on (a disconnect from the broker, a protocol error),
+    // leaves this connection unable to go on: treat either as a drop. Only close() ends the loop.
+    let dropped = false;
+    const drop = () => {
+      if (dropped) return;
+      dropped = true;
       this.subscribed = false;
       current.end(true);
       if (this.closed || current !== this.client) return;
       this.log('mqtt: disconnected, reconnecting');
       this.timer = setTimeout(() => this.start(), this.reconnectAfterMs);
-    });
+    };
+    current.once('close', drop);
+    current.once('end', drop);
   }
 
   private receive(topic: string, packet: IPublishPacket): void {

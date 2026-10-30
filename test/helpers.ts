@@ -70,6 +70,12 @@ export class FakeMqtt extends EventEmitter {
     this.emit('close');
   }
 
+  /** The library ends the connection itself (a broker disconnect, a protocol error). */
+  endByLibrary(): void {
+    this.connected = false;
+    this.emit('end');
+  }
+
   /** A message arrives. */
   deliver(topic: string, payload: string | Buffer, retain = false): void {
     const body = Buffer.from(payload);

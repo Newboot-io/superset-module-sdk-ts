@@ -60,7 +60,11 @@ createServer((request, response) => {
 await client.connect();
 setInterval(() => {
   for (const variableId of Object.keys(twin.variables ?? {})) {
-    client.sendTelemetry({ value: readSensor(variableId), variableId });
+    try {
+      client.sendTelemetry({ value: readSensor(variableId), variableId });
+    } catch (error) {
+      console.error((error as Error).message); // a TelemetryError names the field, not the value
+    }
   }
 }, 5000);
 ```
@@ -96,6 +100,9 @@ Reads the file named by `MODULE_CONFIG` (default `/etc/newboot/module.json`) and
 - `options.log(line)`: where log lines go; default standard error. Connection problems are logged
   as `mqtt: …`, failed reloads as `reload: …`, failing handlers as `handler: …`.
 - `options.reconnectAfterMs`: delay before reconnecting; default 5000.
+- `client.config.configuration` is the module's own `configuration` object as given in
+  `module.json` (`inputs`, `secretFiles` and any other field its description adds; `{}` when
+  absent), for settings the SDK does not interpret.
 - `options.connectMqtt`: replaces the `mqtt` package's `connect` (for tests).
 - Returns a `ModuleClient`; `client.config` is the validated configuration, `client.topics` the
   module's topics.

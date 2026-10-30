@@ -38,6 +38,16 @@ describe('telemetryPayload', () => {
     assert.equal(body, '{"timestamp":1800000000000,"value":1,"variableId":"v-3"}');
   });
 
+  it('refuses a missing telemetry object with a TelemetryError', () => {
+    for (const telemetry of [undefined, null, 'v', 1, []]) {
+      assert.throws(
+        () => telemetryPayload({ now: NOW, telemetry: telemetry as unknown as Telemetry }),
+        { message: 'invalid telemetry: must be an object', name: 'TelemetryError' },
+        String(telemetry),
+      );
+    }
+  });
+
   it('refuses values JSON cannot carry, nested values, bad ids and bad timestamps', () => {
     const refused = [
       { value: Number.NaN, variableId: 'v' },

@@ -57,8 +57,13 @@ createServer((request, response) => {
 setInterval(() => {
   if (!client.isConnected()) return;
   for (const variableId of Object.keys(twin.variables ?? {})) {
-    // The SDK names the message after the twin's variable.
-    client.sendTelemetry({ value: readSensor(variableId), variableId });
+    // The SDK names the message after the twin's variable. A variable id it refuses (a TelemetryError
+    // naming the field) must not stop the timer.
+    try {
+      client.sendTelemetry({ value: readSensor(variableId), variableId });
+    } catch (error) {
+      console.error((error as Error).message);
+    }
   }
 }, SEND_EVERY_MS);
 

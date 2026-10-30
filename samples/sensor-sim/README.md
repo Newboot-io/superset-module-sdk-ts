@@ -26,10 +26,12 @@ Module twin fields, read at start and again on every `reload` (when the console 
 
 | Field       | Type    | Default | Rule              |
 | ----------- | ------- | ------- | ----------------- |
-| `rateMs`    | integer | 2000    | at least 200      |
+| `rateMs`    | integer | 2000    | 200 to 3600000    |
 | `amplitude` | number  | 5       | any finite number |
 
 A missing or invalid field falls back to its default, and the module logs the field's name.
+`rateMs` is capped at one hour (`MAX_RATE_MS`): a longer delay would overflow the timer, which
+then fires every millisecond.
 
 ## Variables
 

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { request } from 'node:https';
 import type { ModuleConfig } from './config.js';
 import { TwinError } from './errors.js';
-import { hasNonFinite, isObject } from './validation.js';
+import { decodeUtf8, hasNonFinite, isObject } from './validation.js';
 
 /** The whole fetch, connection to last byte, within the 15 s Newboot gives a reload. */
 export const TWIN_TIMEOUT_MS = 12_000;
@@ -149,13 +149,15 @@ export function fetchTwin({
           reject(new TwinError(`the twin endpoint answered HTTP ${response.statusCode}`));
           return;
         }
+        let body: string;
         try {
-          resolve(
-            parseTwinAnswer({
-              body: Buffer.concat(chunks).toString(),
-              moduleId: config.target.moduleId,
-            }),
-          );
+          body = decodeUtf8(Buffer.concat(chunks));
+        } catch {
+          reject(new TwinError('the twin answer is not UTF-8'));
+          return;
+        }
+        try {
+          resolve(parseTwinAnswer({ body, moduleId: config.target.moduleId }));
         } catch (error) {
           reject(error);
         }
