@@ -1,0 +1,49 @@
+{
+  "name": "@newboot-io/superset-module-sdk",
+  "version": "0.1.0",
+  "description": "Write a module for a Newboot Superset: fetch its module twin, read its secrets, send and receive telemetry.",
+  "license": "Apache-2.0",
+  "author": "Newboot <dev@newboot.io>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Newboot-io/superset-module-sdk-ts.git"
+  },
+  "homepage": "https://github.com/Newboot-io/superset-module-sdk-ts#readme",
+  "bugs": {
+    "url": "https://github.com/Newboot-io/superset-module-sdk-ts/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "npm run lint && npm run typecheck && npm test",
+    "e2e": "e2e/run.sh",
+    "lint": "biome check .",
+    "prepare": "npm run build",
+    "test": "rm -rf build-test && tsc -p tsconfig.test.json && node --test --experimental-test-coverage --test-coverage-include='build-test/src/**' --test-coverage-lines=90 build-test/test/*.test.js",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit"
+  },
+  "dependencies": {
+    "mqtt": "5.16.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "22.20.5",
+    "@types/node-forge": "1.3.14",
+    "node-forge": "1.4.0",
+    "typescript": "6.0.3"
+  }
+}

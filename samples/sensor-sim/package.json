@@ -1,0 +1,21 @@
+{
+  "name": "sensor-sim",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Sample module: simulates a temperature and pressure sensor for a Newboot Superset.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "test": "rm -rf build-test && tsc -p tsconfig.test.json && node --test build-test/test/*.test.js",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit"
+  },
+  "dependencies": {
+    "@newboot-io/superset-module-sdk": "file:../.."
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "6.0.3"
+  }
+}
