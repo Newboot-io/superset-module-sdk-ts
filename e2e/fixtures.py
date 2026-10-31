@@ -1,4 +1,7 @@
-"""Names the harness's broker, settings server and checker share."""
+"""Names the harness's broker, settings server and checker share, and the checkers' flow metrics
+check."""
+
+import urllib.request
 
 CLUSTER, MODULE, NODE, TENANT = "cluster-a", "my-module", "node-a", "tenant-a"
 TWIN_CLIENT = f"{MODULE}-twin"
@@ -48,3 +51,37 @@ UPSTREAM_NESTED_VARIABLE = "variable-7e6d5c4b-0f9e-4a8f-9e1d-3c2b1a0f4e5d"
 def reloaded_name(correlation_id):
     """What the settings server names the variable it serves to a reload."""
     return f"reload-{correlation_id}"
+
+# The module flow-metrics contract: 17 series, served as Prometheus text.
+FLOW_OPERATIONS = ("acquire", "receive", "process", "enqueue")
+FLOW_SERIES = 17
+METRICS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
+
+
+def flow_metrics(module_http):
+    """The module's /metrics: its content type and its series by name and labels."""
+    with urllib.request.urlopen(module_http + "/metrics", timeout=2) as response:
+        content_type = response.headers.get("Content-Type")
+        text = response.read().decode()
+    series = {}
+    for line in text.splitlines():
+        if line and not line.startswith("#"):
+            name, _, value = line.rpartition(" ")
+            series[name] = float(value)
+    return content_type, series
+
+
+def check_flow_metrics(check, module_http, prefix):
+    """The 17 flow series, served as Prometheus text, connected once ready; returns the series."""
+    content_type, series = flow_metrics(module_http)
+    check(content_type == METRICS_CONTENT_TYPE, f"{prefix}GET /metrics is Prometheus text")
+    check(len(series) == FLOW_SERIES, f"{prefix}GET /metrics has the {FLOW_SERIES} flow series")
+    expected = {"newboot_flow_mqtt_connected"}
+    for operation in FLOW_OPERATIONS:
+        for outcome in ("success", "error"):
+            labels = f'operation="{operation}"'
+            expected.add(f"newboot_flow_operations_total{{{labels},outcome=\"{outcome}\"}}")
+            expected.add(f"newboot_flow_last_{outcome}_timestamp_seconds{{{labels}}}")
+    check(set(series) == expected, f"{prefix}flow series are exactly the contract's")
+    check(series["newboot_flow_mqtt_connected"] == 1, f"{prefix}newboot_flow_mqtt_connected is 1")
+    return series

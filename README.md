@@ -10,6 +10,8 @@ Newboot mounts into your container and gives you four operations, plus the `relo
 - **onTwinChange** + built-in `reload`: when your twin changes in the console, the SDK fetches it
   again, calls you, and answers Newboot.
 
+It also counts what flows through the module, for the activity the console shows (`metrics()`).
+
 It implements the wire contract for you: topics, payload rules, command validation, reply shape,
 certificate rotation, timeouts and size bounds.
 
@@ -36,7 +38,7 @@ npm builds the package on install. The only runtime dependency is [`mqtt`](https
 
 ```ts
 import { createServer } from 'node:http';
-import { ModuleClient } from '@newboot-io/superset-module-sdk';
+import { METRICS_CONTENT_TYPE, ModuleClient } from '@newboot-io/superset-module-sdk';
 
 /** Read your machine or sensor here. */
 const readSensor = (_variableId: string) => 20 + Math.random() * 5;
@@ -51,8 +53,17 @@ client.onTelemetry((message) => {
   console.log(`input: ${message.name ?? message.variableId}`);
 });
 
-// Newboot probes /healthz (restart when failing) and /readyz (ready once 2xx) on port 8080.
+// Newboot probes /healthz (restart when failing) and /readyz (ready once 2xx) on port 8080, and
+// reads the module's activity from /metrics.
 createServer((request, response) => {
+  if (request.url === '/metrics') {
+    if (request.method === 'GET') {
+      response.writeHead(200, { 'content-type': METRICS_CONTENT_TYPE }).end(client.metrics());
+    } else {
+      response.writeHead(405, { allow: 'GET' }).end();
+    }
+    return;
+  }
   const ok = request.url === '/healthz' || (request.url === '/readyz' && client.isConnected());
   response.writeHead(ok ? 200 : 503).end();
 }).listen(8080);
@@ -170,6 +181,48 @@ messages for this client instead of sending them (see
 True while the connection is up AND the subscriptions are granted. This is what a module's
 `/readyz` should answer (`/healthz` can answer 200 while the process runs).
 
+### `client.metrics() → string`
+
+The module's flow observability metrics, in the Prometheus text format: serve them on
+`GET /metrics`, port 8080, with the content type `METRICS_CONTENT_TYPE`
+(`text/plain; version=0.0.4; charset=utf-8`), as the quick start does. Newboot's collector scrapes
+them, and the console's data-flow view shows from them whether the module is flowing, idle or
+failing; without them it shows "Activity unknown". Exactly 17 series:
+
+- `newboot_flow_operations_total{operation,outcome}`: a counter per operation and outcome
+  (`success` or `error`);
+- `newboot_flow_last_success_timestamp_seconds{operation}` and
+  `newboot_flow_last_error_timestamp_seconds{operation}`: Unix seconds of the last of each, 0 before
+  the first;
+- `newboot_flow_mqtt_connected`: 1 while connected and subscribed (`isConnected()`), 0 after a failed
+  attempt, a drop, a refused subscription or `close()`, -1 until the first connection succeeds or
+  fails.
+
+The SDK records the operations itself, once each:
+
+- `receive`: a live message arrives on one of `configuration.inputs` (retained ones are not
+  counted);
+- `process`: that message, once every `onTelemetry` handler settled: a success when it was decoded
+  and every handler succeeded, an error when it is dropped (see `onTelemetry`) or a handler fails.
+  There is no timeout: an async handler that never settles leaves its message without a `process`
+  count;
+- `enqueue`: a `sendTelemetry` call, counted as it returns: a success when the local MQTT client
+  takes the message without refusing it at once, an error when it refuses it (it is disconnecting)
+  or the client is not connected. A success does not wait for the socket write. An invalid message
+  throws `TelemetryError` and is not counted;
+- `acquire`: never counted by the SDK; record your device reads with
+  `client.flow.record({ operation: 'acquire', success })`.
+
+Commands and `reload` are not counted. A success means the module did its part, not that the
+broker or the cloud received the value. Counters live in memory and reset when the process
+restarts. Labels are the operation and outcome only, never a variable id, topic, value or error.
+`Flow`, `FLOW_METRICS`, `FLOW_OPERATIONS` and `FlowOperation` are exported for modules and tests
+that count themselves.
+
+Newboot's collector scrapes `/metrics` on the container named `module`, on its port named `http`
+(8080), every 15 s; the console takes rates over 2 minutes, which handles the counters resetting
+on a restart. The module only has to serve the endpoint.
+
 ### `client.sendTelemetry({ variableId, value, name?, timestamp? }) → boolean`
 
 Publishes `{"name"?,"timestamp","value","variableId"}` as JSON on
@@ -184,7 +237,8 @@ Publishes `{"name"?,"timestamp","value","variableId"}` as JSON on
 - `timestamp`: optional integer from 0 to 2^53-1, epoch milliseconds; default now. A number with
   an integral value (`1.7e12`) counts as an integer.
 - Returns `true` once handed to the connection, `false` when not connected (including before
-  `connect()` and between a drop and the next subscription): the value is dropped, never queued.
+  `connect()` and between a drop and the next subscription) or when the local MQTT client refuses
+  it at once (it is disconnecting): the value is dropped, never queued.
 - Throws `TelemetryError` naming the field at fault, never its value.
 
 ### `client.onTelemetry(handler)`
@@ -235,7 +289,9 @@ Disconnects and stops reconnecting.
 
 Exported for tests and custom transports: `parseConfig`, `parseBrokerUrl`, `loadConfig`, `topicsFor`, `readSecret`,
 `secretNames`, `parseTwinAnswer`, `telemetryPayload`, `decodeMessage`, `parseTelemetry`,
-`parseCommand`, `onTime`, `replyBody`, `validSegment`, `isTelemetryValue`.
+`parseCommand`, `onTime`, `replyBody`, `validSegment`, `isTelemetryValue`; `Flow`,
+`FLOW_METRICS`, `FLOW_OPERATIONS`, `FlowOperation` and `METRICS_CONTENT_TYPE`, the flow metrics a
+client records (see `metrics()`).
 
 ## Security notes
 

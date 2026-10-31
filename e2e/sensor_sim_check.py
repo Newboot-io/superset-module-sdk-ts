@@ -1,5 +1,6 @@
-"""Checks the sensor-sim sample over the test broker: it answers its health probes and sends
-`temperature` and `pressure` at the twin's `rateMs`, within their simulated ranges."""
+"""Checks the sensor-sim sample over the test broker: it answers its health probes, serves its flow
+metrics and sends `temperature` and `pressure` at the twin's `rateMs`, within their simulated
+ranges."""
 
 import json
 import os
@@ -9,7 +10,7 @@ import time
 import urllib.request
 
 import paho.mqtt.client as mqtt
-from fixtures import MODULE, NODE, TENANT
+from fixtures import MODULE, NODE, TENANT, check_flow_metrics
 from paho.mqtt.enums import CallbackAPIVersion
 
 AMPLITUDE = 5
@@ -61,6 +62,7 @@ while http_status("/readyz") != 200 and time.monotonic() < end:
     time.sleep(0.5)
 check(http_status("/readyz") == 200, "sensor-sim: GET /readyz answers 200 once connected")
 check(http_status("/healthz") == 200, "sensor-sim: GET /healthz answers 200")
+check_flow_metrics(check, MODULE_HTTP, "sensor-sim: ")
 
 seen = {name: [] for name in RANGES}
 end = time.monotonic() + WAIT_S
@@ -83,6 +85,15 @@ for name, (low, high) in RANGES.items():
     stamps = [message["timestamp"] for message in seen[name]]
     gaps = [later - earlier for earlier, later in zip(stamps, stamps[1:])]
     check(all(400 <= gap <= 1500 for gap in gaps), f"sensor-sim: {name} every rateMs: {gaps}")
+
+# The messages seen were counted as enqueued.
+flow = check_flow_metrics(check, MODULE_HTTP, "sensor-sim: at the end, ")
+enqueued = flow['newboot_flow_operations_total{operation="enqueue",outcome="success"}']
+check(enqueued > 0, f"sensor-sim: enqueue successes counted: {enqueued}")
+check(
+    flow['newboot_flow_last_success_timestamp_seconds{operation="enqueue"}'] > 0,
+    "sensor-sim: last enqueue success has a timestamp",
+)
 
 client.loop_stop()
 print("SENSOR-SIM CHECKS PASSED", flush=True)

@@ -49,6 +49,13 @@ export class FakeMqtt extends EventEmitter {
   ended = false;
   granted = [{ qos: 1 }];
   published: Published[] = [];
+  /** What the local client answers each publish with: undefined accepts it. */
+  publishError: Error | undefined;
+  /**
+   * When it calls a publish back: during the call (a refusal, or a write that fits), later (on
+   * 'drain', under backpressure) or never (the stream closed first).
+   */
+  publishCallback: 'during' | 'later' | 'never' = 'during';
   subscriptions: { filters: string[]; options: unknown }[] = [];
 
   constructor(
@@ -82,17 +89,35 @@ export class FakeMqtt extends EventEmitter {
     this.emit('message', topic, body, { payload: body, retain, topic });
   }
 
+  /** Set to hold the subscription answer back until `answerSubscription()`. */
+  holdSubscription = false;
+  private heldSubscription: (() => void) | undefined;
+
   subscribe(
     filters: string[],
     options: unknown,
     callback: (error: Error | null, granted: { qos: number }[]) => void,
   ): void {
     this.subscriptions.push({ filters, options });
-    callback(null, this.granted);
+    const answer = () => callback(null, this.granted);
+    if (this.holdSubscription) this.heldSubscription = answer;
+    else answer();
   }
 
-  publish(topic: string, payload: string, options: unknown): void {
+  /** The broker answers the subscription held back. */
+  answerSubscription(): void {
+    this.heldSubscription?.();
+  }
+
+  publish(
+    topic: string,
+    payload: string,
+    options: unknown,
+    callback?: (error?: Error) => void,
+  ): void {
     this.published.push({ options, payload, topic });
+    if (this.publishCallback === 'during') callback?.(this.publishError);
+    else if (this.publishCallback === 'later') setTimeout(() => callback?.(this.publishError), 1);
   }
 
   end(): void {
@@ -124,3 +149,15 @@ export async function until(condition: () => boolean, what: string, timeoutMs = 
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
 }
+
+/** The series of a rendering, by name and labels. */
+export const series = (text: string): Map<string, string> =>
+  new Map(
+    text
+      .split('\n')
+      .filter((line) => line && !line.startsWith('#'))
+      .map((line) => {
+        const at = line.lastIndexOf(' ');
+        return [line.slice(0, at), line.slice(at + 1)];
+      }),
+  );

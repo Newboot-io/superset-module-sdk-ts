@@ -34,6 +34,7 @@ from fixtures import (
     UPSTREAM_NESTED_ARRAY_VARIABLE,
     UPSTREAM_NESTED_VARIABLE,
     UPSTREAM_VARIABLE,
+    check_flow_metrics,
     reloaded_name,
 )
 from paho.mqtt.enums import CallbackAPIVersion
@@ -197,6 +198,9 @@ while http_status("/readyz") != 200 and time.monotonic() < end:
     time.sleep(0.5)
 check(http_status("/readyz") == 200, "GET /readyz answers 200 once subscribed")
 check(http_status("/healthz") == 200, "GET /healthz answers 200")
+flow = check_flow_metrics(check, MODULE_HTTP, "")
+enqueued = 'newboot_flow_operations_total{operation="enqueue",outcome="success"}'
+check(flow[enqueued] > 0, "the telemetry sent is counted as enqueued")
 
 # Receiving: linked-module values the SDK delivers (a number, an array) and ignores (NaN, 1e400,
 # an object, a nested array, a retained value, an oversized one). run.sh reads the module log.
@@ -280,6 +284,15 @@ check(answer and answer.get("result") == RELOADED, f"reload: {answer}")
 # Earlier successful reloads served the same variable under other names: wait for this one's.
 after = next_telemetry(WAIT_S, RELOADED_VARIABLE, reloaded_name("reload-1"))
 check(after is not None, "after reload, telemetry follows the variables fetched again")
+
+# Flow metrics: the linked-module values above were received, the valid ones processed and the
+# dropped ones counted as process errors; commands and reloads are not counted.
+flow = check_flow_metrics(check, MODULE_HTTP, "at the end, ")
+received = flow['newboot_flow_operations_total{operation="receive",outcome="success"}']
+processed = flow['newboot_flow_operations_total{operation="process",outcome="success"}']
+rejected = flow['newboot_flow_operations_total{operation="process",outcome="error"}']
+check(processed >= 2 and rejected >= 4, f"inputs processed {processed}, rejected {rejected}")
+check(received == processed + rejected, f"each of the {received} inputs is processed once")
 
 client.loop_stop()
 print("ALL CHECKS PASSED", flush=True)

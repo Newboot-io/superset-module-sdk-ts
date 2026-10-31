@@ -1,7 +1,11 @@
 // sensor-sim: a sample module for a Newboot Superset. It simulates a sensor and sends
 // `temperature` and `pressure` every `rateMs`, both read from its module twin.
 import { createServer } from 'node:http';
-import { ModuleClient, type ModuleTwin } from '@newboot-io/superset-module-sdk';
+import {
+  METRICS_CONTENT_TYPE,
+  ModuleClient,
+  type ModuleTwin,
+} from '@newboot-io/superset-module-sdk';
 import {
   ownVariables,
   PRESSURE,
@@ -83,7 +87,16 @@ client.onTwinChange((twin) => {
   apply(twin);
 });
 
+// Health probes, and the flow metrics Newboot's console shows the module's activity from.
 createServer((request, response) => {
+  if (request.url === '/metrics') {
+    if (request.method === 'GET') {
+      response.writeHead(200, { 'content-type': METRICS_CONTENT_TYPE }).end(client.metrics());
+    } else {
+      response.writeHead(405, { allow: 'GET' }).end();
+    }
+    return;
+  }
   const ok = request.url === '/healthz' || (request.url === '/readyz' && client.isConnected());
   response.writeHead(ok ? 200 : 503).end();
 }).listen(HEALTH_PORT);
