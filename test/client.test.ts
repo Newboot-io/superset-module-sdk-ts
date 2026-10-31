@@ -11,7 +11,15 @@ import type { Telemetry } from '../src/telemetry.js';
 import { topicsFor } from '../src/topics.js';
 import type { ModuleTwin } from '../src/twin.js';
 import { INPUT, rendered, TARGET } from './fixtures.js';
-import { CA, CLIENT_PEM, type FakeMqtt, fakeConnect, twinServer, until } from './helpers.js';
+import {
+  CA,
+  CLIENT_PEM,
+  type FakeMqtt,
+  fakeConnect,
+  series,
+  twinServer,
+  until,
+} from './helpers.js';
 
 const TOPICS = topicsFor(TARGET);
 const SCOPE = { clusterId: 'cluster-a', moduleId: 'my-module', tenantConfigId: 'tenant-a' };
@@ -53,6 +61,14 @@ const reload = (correlationId: string, override: Record<string, unknown> = {}) =
     ...override,
   });
 };
+
+/** One flow series of the client's metrics. */
+const flow = (client: ModuleClient, name: string) => series(client.metrics()).get(name);
+const count = (client: ModuleClient, operation: string, outcome: 'error' | 'success') =>
+  Number(
+    flow(client, `newboot_flow_operations_total{operation="${operation}",outcome="${outcome}"}`),
+  );
+const connectedGauge = (client: ModuleClient) => flow(client, 'newboot_flow_mqtt_connected');
 
 const replies = (broker: FakeMqtt) =>
   broker.published
@@ -407,5 +423,151 @@ describe('ModuleClient', () => {
     await new Promise((resolve) => setTimeout(resolve, 60));
     assert.deepEqual(replies(broker), []);
     await client.close();
+  });
+});
+
+describe('ModuleClient flow metrics', () => {
+  it('follows the connection: unknown, up once subscribed, down on a drop or close', async () => {
+    const { client, clients } = setup();
+    assert.equal(series(client.metrics()).size, 17);
+    assert.equal(connectedGauge(client), '-1', 'unknown before the first connection');
+    await client.connect();
+    await until(() => clients.length === 1, 'a connection');
+    const broker = clients[0] as FakeMqtt;
+    broker.accept();
+    assert.equal(connectedGauge(client), '1');
+    broker.drop();
+    assert.equal(connectedGauge(client), '0');
+    await until(() => clients.length === 2, 'a second connection');
+    const next = clients[1] as FakeMqtt;
+    next.accept();
+    assert.equal(connectedGauge(client), '1');
+    broker.endByLibrary(); // a late end of the old connection changes nothing
+    assert.equal(connectedGauge(client), '1');
+    await client.close();
+    assert.equal(connectedGauge(client), '0');
+  });
+
+  it('stays disconnected when a subscription is answered after close()', async () => {
+    const { client, clients } = setup();
+    await client.connect();
+    await until(() => clients.length === 1, 'a connection');
+    const broker = clients[0] as FakeMqtt;
+    broker.holdSubscription = true;
+    broker.accept();
+    await client.close();
+    assert.equal(connectedGauge(client), '0');
+    broker.answerSubscription();
+    assert.equal(connectedGauge(client), '0');
+    assert.equal(client.isConnected(), false);
+  });
+
+  it('counts a refused subscription and a missing certificate as disconnected', async () => {
+    const refused = setup();
+    await refused.client.connect();
+    await until(() => refused.clients.length === 1, 'a connection');
+    const broker = refused.clients[0] as FakeMqtt;
+    broker.granted = [{ qos: 135 }];
+    broker.accept();
+    assert.equal(connectedGauge(refused.client), '0');
+    await refused.client.close();
+    const missing = setup({ mqtt: { ...MQTT, identity: '/nonexistent/id.pem' } });
+    await missing.client.connect();
+    await until(() => missing.lines.length >= 1, 'a failed attempt');
+    assert.equal(connectedGauge(missing.client), '0');
+    await missing.client.close();
+  });
+
+  it('counts each live input as received, then processed once its handlers finished', async () => {
+    const { broker, client } = await connected();
+    let release = () => {};
+    client.onTelemetry(() => new Promise<void>((resolve) => (release = resolve)));
+    broker.deliver(INPUT, JSON.stringify({ value: 1.5, variableId: 'v-up' }));
+    assert.equal(count(client, 'receive', 'success'), 1);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(count(client, 'process', 'success'), 0, 'not before the handler finished');
+    release();
+    await until(() => count(client, 'process', 'success') === 1, 'the input processed');
+    assert.ok(
+      Number(flow(client, 'newboot_flow_last_success_timestamp_seconds{operation="process"}')) > 0,
+    );
+    assert.equal(count(client, 'process', 'error'), 0);
+    assert.equal(count(client, 'receive', 'error'), 0);
+    await client.close();
+  });
+
+  it('counts an input that breaks the rules, or whose handler fails, as a process error', async () => {
+    const { broker, client } = await connected();
+    let fail = false;
+    client.onTelemetry(async () => {
+      if (fail) throw new Error('cannot use 1');
+    });
+    broker.deliver(INPUT, '{"value": NaN, "variableId": "v-nan"}');
+    broker.deliver(INPUT, 'x'.repeat(9000));
+    assert.equal(count(client, 'receive', 'success'), 2);
+    assert.equal(count(client, 'process', 'error'), 2);
+    fail = true;
+    broker.deliver(INPUT, JSON.stringify({ value: 1, variableId: 'v' }));
+    await until(() => count(client, 'process', 'error') === 3, 'the handler failure');
+    assert.equal(count(client, 'process', 'success'), 0);
+    assert.ok(
+      Number(flow(client, 'newboot_flow_last_error_timestamp_seconds{operation="process"}')) > 0,
+    );
+    await client.close();
+  });
+
+  it('leaves retained inputs, commands and reloads out of the counts', async () => {
+    const { broker, client } = await connected({ twin: undefined });
+    broker.deliver(INPUT, JSON.stringify({ value: 1, variableId: 'v' }), true);
+    broker.deliver(`${TOPICS.command}/unicast/reload`, reload('not-counted'));
+    broker.deliver(`${TOPICS.command}/unicast/ping`, reload('ping', { command: 'ping' }));
+    await until(() => replies(broker).length === 1, 'the reload reply');
+    for (const operation of ['receive', 'process', 'enqueue']) {
+      for (const outcome of ['success', 'error'] as const) {
+        assert.equal(count(client, operation, outcome), 0, `${operation} ${outcome}`);
+      }
+    }
+    await client.close();
+  });
+
+  it('counts telemetry the local client accepts or refuses, and sends while disconnected', async () => {
+    const { broker, client } = await connected();
+    assert.ok(client.sendTelemetry({ value: 1, variableId: 'v' }));
+    assert.equal(count(client, 'enqueue', 'success'), 1);
+    broker.publishError = new Error('client disconnecting');
+    assert.equal(client.sendTelemetry({ value: 1, variableId: 'v' }), false, 'refused: dropped');
+    assert.equal(count(client, 'enqueue', 'error'), 1);
+    assert.throws(
+      () => client.sendTelemetry({ value: Number.NaN, variableId: 'v' }),
+      TelemetryError,
+    );
+    assert.equal(count(client, 'enqueue', 'error'), 1, 'an invalid message is not counted');
+    broker.drop();
+    assert.equal(client.sendTelemetry({ value: 1, variableId: 'v' }), false);
+    assert.equal(count(client, 'enqueue', 'error'), 2);
+    assert.equal(count(client, 'enqueue', 'success'), 1);
+    assert.equal(count(client, 'acquire', 'success') + count(client, 'acquire', 'error'), 0);
+    await client.close();
+  });
+
+  it('counts each send once, whenever or whether the local client calls back', async () => {
+    const { broker, client } = await connected();
+    broker.publishCallback = 'later';
+    broker.publishError = new Error('connection closed'); // a late error is not a refusal
+    assert.ok(client.sendTelemetry({ value: 1, variableId: 'v' }));
+    assert.equal(count(client, 'enqueue', 'success'), 1, 'counted when publish() returns');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    broker.publishCallback = 'never';
+    assert.ok(client.sendTelemetry({ value: 1, variableId: 'v' }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(count(client, 'enqueue', 'success'), 2);
+    assert.equal(count(client, 'enqueue', 'error'), 0);
+    await client.close();
+  });
+
+  it('lets the module record acquire itself', () => {
+    const { client } = setup();
+    client.flow.record({ operation: 'acquire', success: false });
+    assert.equal(count(client, 'acquire', 'error'), 1);
   });
 });

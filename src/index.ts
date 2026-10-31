@@ -25,6 +25,13 @@ export {
   UnsupportedModeError,
 } from './errors.js';
 export {
+  FLOW_METRICS,
+  FLOW_OPERATIONS,
+  Flow,
+  type FlowOperation,
+  METRICS_CONTENT_TYPE,
+} from './flow.js';
+export {
   type Answer,
   type Command,
   decodeMessage,

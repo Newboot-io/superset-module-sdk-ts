@@ -1,8 +1,12 @@
 // A minimal module for a Newboot Superset: sends one value per variable of its module twin every
 // few seconds, logs the values its linked modules send (by name only), follows `reload`, and
-// answers Newboot's health probes.
+// answers Newboot's health probes and flow metrics.
 import { createServer } from 'node:http';
-import { ModuleClient, type ModuleTwin } from '@newboot-io/superset-module-sdk';
+import {
+  METRICS_CONTENT_TYPE,
+  ModuleClient,
+  type ModuleTwin,
+} from '@newboot-io/superset-module-sdk';
 
 const HEALTH_PORT = 8080;
 const RETRY_TWIN_AFTER_MS = 3000;
@@ -49,7 +53,16 @@ client.onTelemetry((message) => {
 });
 
 // Newboot restarts the module when /healthz fails, and counts it as ready once /readyz succeeds.
+// Its console shows the module's activity from /metrics.
 createServer((request, response) => {
+  if (request.url === '/metrics') {
+    if (request.method === 'GET') {
+      response.writeHead(200, { 'content-type': METRICS_CONTENT_TYPE }).end(client.metrics());
+    } else {
+      response.writeHead(405, { allow: 'GET' }).end();
+    }
+    return;
+  }
   const ok = request.url === '/healthz' || (request.url === '/readyz' && client.isConnected());
   response.writeHead(ok ? 200 : 503).end();
 }).listen(HEALTH_PORT);

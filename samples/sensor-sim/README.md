@@ -50,7 +50,8 @@ is never printed.
 ## Health
 
 `/healthz` answers 200 while the process runs; `/readyz` answers 200 while the SDK is connected and
-subscribed (`isConnected()`). Both on port 8080.
+subscribed (`isConnected()`); `/metrics` serves the SDK's flow metrics (`client.metrics()`), from
+which the console shows the module's activity. All on port 8080.
 
 ## Build and test
 
@@ -80,7 +81,7 @@ docker build --platform linux/amd64 -f samples/sensor-sim/Dockerfile -t sensor-s
 
 - **Locally**, against the SDK's end-to-end harness: `e2e/run.sh` from the repository root builds
   this image and runs it against a throwaway broker and twin endpoint, with a twin setting
-  `rateMs` to 500, and checks its health probes and messages.
+  `rateMs` to 500, and checks its health probes, flow metrics and messages.
 - **On a Superset cluster**: push the image to a registry your Superset reads, declare the module
   with its `temperature` and `pressure` variables, the `rateMs` and `amplitude` fields and the
   `device-password` secret, and the `reload` command. Newboot mounts the module configuration,
