@@ -84,5 +84,7 @@ docker build --platform linux/amd64 -f samples/sensor-sim/Dockerfile -t sensor-s
   `rateMs` to 500, and checks its health probes, flow metrics and messages.
 - **On a Superset cluster**: push the image to a registry your Superset reads, declare the module
   with its `temperature` and `pressure` variables, the `rateMs` and `amplitude` fields and the
-  `device-password` secret, and the `reload` command. Newboot mounts the module configuration,
-  certificates and secret file the SDK reads.
+  `device-password` secret (label "Device password": simulates the login to the device the sensor
+  reads), and the `reload` command. Set its value on the module's **Secrets** tab in the console
+  before you deploy. Newboot mounts the module configuration, certificates and secret file the SDK
+  reads.
