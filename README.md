@@ -161,6 +161,13 @@ the value as a JSON string. `client.secretNames()` lists the declared names.
 Reads every declared secret now and throws the `SecretError` of the first one that cannot be read.
 Call it at start, so a module with a broken secret stops at once (the example does).
 
+Each secret your module reads is declared in its description in your Superset catalog: its name
+(lowercase letters, digits and hyphens: the `<name>` of its file), a short label and what it is
+for. Whoever manages the cluster sets each value on the module's **Secrets** tab in the Newboot
+console, which shows that label and purpose. A deploy is refused until every secret the module
+uses has a value; a new value replaces the file within about five minutes while the module runs.
+Values are write-only: neither the console nor the API reads one back.
+
 ### `client.connect() → Promise<void>`
 
 Connects to `brokerUrl` with MQTT 5 over TLS, presenting `mqtt.identity` and trusting `mqtt.ca`,
